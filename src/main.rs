@@ -1,32 +1,51 @@
 use xcb;
 
 fn main() {
-    /*
-    let segments: &[xcb::Segment] = &[
-        xcb::Segment::new(100, 10, 140, 30),
-        xcb::Segment::new(110, 25, 130, 60)
-    ];
-    let rectangles: &[xcb::Rectangle] = &[
-        xcb::Rectangle::new(10, 50, 40, 20),
-        xcb::Rectangle::new(80, 50, 10, 40)
-    ];
-*/
     let (conn, screen_num) = xcb::Connection::connect(None).unwrap();
     let screen = conn.get_setup().roots().nth(screen_num as usize).unwrap();
 
-    let background = conn.generate_id();
-    xcb::create_gc(&conn, background, screen.root(), &[
-        (xcb::GC_FOREGROUND, screen.black_pixel()),
-        (xcb::GC_GRAPHICS_EXPOSURES, 0),
-    ]);
-    let foreground = conn.generate_id();
-    xcb::create_gc(&conn, foreground, screen.root(), &[
-        (xcb::GC_FOREGROUND, screen.white_pixel()),
-        (xcb::GC_GRAPHICS_EXPOSURES, 0),
-    ]);
+    let colormap = screen.default_colormap();
+    let mut gc = [
+        0x000000u32, // background
+        0x5DE73D, // meter low
+        0xFFFF00, // meter med
+        0xFF0000, // meter high
+        0x0F6E0F, // grid low
+        0x6E6E0F, // grid med 1
+        0xB46E0F, // grid med 2
+        0x6E0F0F, // grid high
+    ].iter()
+        .map(|rgb| [
+            ((rgb >> 16) * 0x101) as u16,
+            (((rgb >> 8) & 0xFF) * 0x101) as u16,
+            ((rgb & 0xFF) * 0x101) as u16
+        ])
+        .map(| [r,g,b]| xcb::alloc_color(&conn, colormap, r, g, b))
+        .collect::<Vec<xcb::AllocColorCookie>>()
+        .into_iter()
+        .map(|cookie| cookie.get_reply().unwrap().pixel())
+        .map(|pixel| {
+            let id = conn.generate_id();
+            xcb::create_gc(&conn, id, screen.root(), &[
+                (xcb::GC_FOREGROUND, pixel),
+                (xcb::GC_GRAPHICS_EXPOSURES, 0),
+            ]);
+            id
+        });
+    let gc_bg = gc.next().unwrap();
+    let gc_meter_low = gc.next().unwrap();
+    let gc_meter_med = gc.next().unwrap();
+    let gc_meter_high = gc.next().unwrap();
+    let gc_grid_low = gc.next().unwrap();
+    let gc_grid_med1 = gc.next().unwrap();
+    let gc_grid_med2 = gc.next().unwrap();
+    let gc_grid_high = gc.next().unwrap();
+    assert!(gc.next().is_none());
 
     let mut win_w: u16 = 150;
     let mut win_h: u16 = 150;
+
+    let title = "VU meter";
 
     let win = conn.generate_id();
     xcb::create_window(&conn,
@@ -47,9 +66,11 @@ fn main() {
         ]
     );
     xcb::map_window(&conn, win);
+    xcb::change_property(&conn, xcb::PROP_MODE_REPLACE as u8, win,
+                         xcb::ATOM_WM_NAME, xcb::ATOM_STRING, 8, title.as_bytes());
     conn.flush();
 
-    let ch = [ 0.45, 0.1 ];
+    let ch = [ 0.00, 0.01, 0.45, 0.59, 0.61, 0.79, 0.81, 0.99, 1.00 ];
     loop {
         let event = conn.wait_for_event();
         match event {
@@ -71,34 +92,41 @@ fn main() {
                         let x: (i16, i16) = (0, win_w as i16 - 1);
                         let y: (i16, i16) = (0, win_h as i16 - 1);
 
-                        let e = ch.len() as i16;
+                        let e = ch.len();
 
-                        let on_rect: Vec<xcb::Rectangle> = ch.iter().enumerate().map(
+                        let off_rect: Vec<xcb::Rectangle> = ch.iter().enumerate().flat_map(
                             |(i, level)| rect(
-                                ((e - i as i16 - 1) * x.0 + i as i16 * x.1) / e,
-                                ((e - i as i16    ) * x.0 + (i as i16 + 1) * x.1) / e,
-                                (y.0 as f32 * level + y.1 as f32 * (1f32 - level)) as i16,
+                                interp_i(x.0, x.1, i, e),
+                                interp_i(x.0, x.1, i+1, e),
+                                y.0,
+                                interp_f(y.1 + 1, y.0, *level) - 1,
+                            )
+                        ).collect();
+                        xcb::poly_fill_rectangle(&conn, win, gc_bg, &off_rect);
+
+                        let on_rect: Vec<xcb::Rectangle> = ch.iter().enumerate().flat_map(
+                            |(i, level)| rect(
+                                interp_i(x.0, x.1, i, e),
+                                interp_i(x.0, x.1, i+1, e),
+                                interp_f(y.1 + 1, y.0, *level),
                                 y.1,
                             )
                         ).collect();
-                        xcb::poly_fill_rectangle(&conn, win, foreground, &on_rect);
-
-                        let off_rect: Vec<xcb::Rectangle> = ch.iter().enumerate().map(
-                            |(i, level)| rect(
-                                ((e - i as i16 - 1) * x.0 + i as i16 * x.1) / e,
-                                ((e - i as i16    ) * x.0 + (i as i16 + 1) * x.1) / e,
-                                y.0,
-                                (y.0 as f32 * level + y.1 as f32 * (1f32 - level)) as i16,
-                            )
-                        ).collect();
-                        xcb::poly_fill_rectangle(&conn, win, background, &off_rect);
+                        xcb::poly_fill_rectangle(&conn, win, gc_meter_low, &on_rect);
 
                         /*
-                        /* We draw the segements */
-                        xcb::poly_segment(&conn, win, foreground, &segments);
-
-                        /* We draw the rectangles */
-                        xcb::poly_fill_rectangle(&conn, win, foreground, &rectangles);
+                        let segments: &[xcb::Segment] = &[
+                            xcb::Segment::new(
+                                x.0,
+                                y.0 *
+                                x.1,
+                            ),
+                            xcb::Segment::new(
+                                x.0,
+                                x.1,
+                            )
+                        ];
+                        xcb::poly_segment(&conn, win, gc_grid_med1, &segments);
                          */
 
                         /* We flush the request */
@@ -117,8 +145,7 @@ fn main() {
                         };
                         win_w = event.width();
                         win_h = event.height();
-                        println!("Resize: {} x {}", win_w, win_h);
-                        //break;
+                        //println!("Resize: {} x {}", win_w, win_h);
                     },
                     _ => {}
                 }
@@ -127,8 +154,28 @@ fn main() {
     }
 }
 
-fn rect(x0: i16, x1: i16, y0: i16, y1: i16) -> xcb::Rectangle {
-    assert!(x1 >= x0);
-    assert!(y1 >= y0);
-    xcb::Rectangle::new(x0, y0, (x1 - x0 + 1) as u16, (y1 - y0 + 1) as u16)
+fn rect(x0: i16, x1: i16, y0: i16, y1: i16) -> Option<xcb::Rectangle> {
+    if x1 >= x0 && y1 >= y0 {
+        Some(xcb::Rectangle::new(x0, y0, (x1 - x0 + 1) as u16, (y1 - y0 + 1) as u16))
+    } else {
+        None
+    }
+}
+
+fn interp_i(a: i16, b: i16, pos: usize, max_pos: usize) -> i16 {
+    (
+        (
+            a as i32 * (max_pos - pos) as i32
+                +
+                b as i32 * pos as i32
+        ) / max_pos as i32
+    ) as i16
+}
+
+fn interp_f(a: i16, b: i16, pos: f32) -> i16 {
+    (
+        a as f32 * (1f32 - pos)
+            +
+            b as f32 * pos
+    ) as i16
 }
