@@ -42,8 +42,8 @@ fn main() {
     let gc_grid_high = gc.next().unwrap();
     assert!(gc.next().is_none());
 
-    let mut win_w: u16 = 150;
-    let mut win_h: u16 = 150;
+    let mut win_w: u16 = 108;
+    let mut win_h: u16 = 190;
 
     let title = "VU meter";
 
@@ -70,7 +70,7 @@ fn main() {
                          xcb::ATOM_WM_NAME, xcb::ATOM_STRING, 8, title.as_bytes());
     conn.flush();
 
-    let ch = [ 0.00, 0.01, 0.45, 0.59, 0.61, 0.79, 0.81, 0.99, 1.00 ];
+    let ch = [0.00, 0.01, 0.45, 0.69, 0.71, 0.89, 0.91, 0.99, 1.00];
     loop {
         let event = conn.wait_for_event();
         match event {
@@ -94,26 +94,39 @@ fn main() {
 
                         let e = ch.len();
 
-                        let off_rect: Vec<xcb::Rectangle> = ch.iter().enumerate().flat_map(
-                            |(i, level)| rect(
-                                interp_i(x.0, x.1, i, e),
-                                interp_i(x.0, x.1, i+1, e),
-                                y.0,
-                                interp_f(y.1 + 1, y.0, *level) - 1,
-                            )
-                        ).collect();
-                        xcb::poly_fill_rectangle(&conn, win, gc_bg, &off_rect);
+                        // bar chart
+                        let locations = ch.iter()
+                            .enumerate()
+                            .map(|(i, level)| {
+                                let x0 = interp_i(x.0, x.1, i, e);
+                                let x1 = interp_i(x.0, x.1, i + 1, e);
+                                let yp = interp_f(y.1 + 1, y.0, *level) as i16;
+                                let y = if *level < 0.7 {
+                                    [y.0, yp, yp, yp, y.1 + 1]
+                                } else {
+                                    let ym1 = interp_f(y.1 + 1, y.0, 0.7) as i16;
+                                    if *level < 0.9 {
+                                        [y.0, yp, yp, ym1, y.1 + 1]
+                                    } else {
+                                        let ym2 = interp_f(y.1 + 1, y.0, 0.9) as i16;
+                                        [y.0, yp, ym2, ym1, y.1 + 1]
+                                    }
+                                };
+                                (x0, x1, y)
+                            })
+                            .collect::<Vec<(i16, i16, [i16; 5])>>();
 
-                        let on_rect: Vec<xcb::Rectangle> = ch.iter().enumerate().flat_map(
-                            |(i, level)| rect(
-                                interp_i(x.0, x.1, i, e),
-                                interp_i(x.0, x.1, i+1, e),
-                                interp_f(y.1 + 1, y.0, *level),
-                                y.1,
-                            )
-                        ).collect();
-                        xcb::poly_fill_rectangle(&conn, win, gc_meter_low, &on_rect);
+                        for (i, gc) in [gc_bg, gc_meter_high, gc_meter_med, gc_meter_low].iter().enumerate() {
+                            let r: Vec<xcb::Rectangle> = locations.iter().flat_map(
+                                |(x0, x1, y)|
+                                    rect(*x0, *x1, y[i], y[i+1]-1)
+                            ).collect();
+                            if !r.is_empty() {
+                                xcb::poly_fill_rectangle(&conn, win, *gc, &r);
+                            }
+                        }
 
+                        // grid
                         let y1 = interp_f(y.1, y.0, 0.25) as i16;
                         let y2 = interp_f(y.1, y.0, 0.5) as i16;
                         let y3 = interp_f(y.1, y.0, 0.7) as i16;
@@ -135,7 +148,6 @@ fn main() {
                             xcb::Segment::new(x.0, y6, x.1, y6),
                         ]);
 
-                        /* We flush the request */
                         conn.flush();
                     },
                     xcb::KEY_PRESS => {
@@ -178,10 +190,8 @@ fn interp_i(a: i16, b: i16, pos: usize, max_pos: usize) -> i16 {
     ) as i16
 }
 
-fn interp_f(a: i16, b: i16, pos: f32) -> i16 {
-    (
-        a as f32 * (1f32 - pos)
-            +
-            b as f32 * pos
-    ) as i16
+fn interp_f(a: i16, b: i16, pos: f32) -> f32 {
+    a as f32 * (1f32 - pos)
+        +
+        b as f32 * pos
 }
