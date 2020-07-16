@@ -5,7 +5,7 @@ fn main() {
     let screen = conn.get_setup().roots().nth(screen_num as usize).unwrap();
 
     let colormap = screen.default_colormap();
-    let mut gc = [
+    let gc_cookies = [
         0x000000u32, // background
         0x5DE73D, // meter low
         0xFFFF00, // meter med
@@ -21,8 +21,9 @@ fn main() {
             ((rgb & 0xFF) * 0x101) as u16
         ])
         .map(|[r, g, b]| xcb::alloc_color(&conn, colormap, r, g, b))
-        .collect::<Vec<xcb::AllocColorCookie>>()
-        .into_iter()
+        .collect::<Vec<xcb::AllocColorCookie>>();
+
+    let mut gc = gc_cookies.into_iter()
         .map(|cookie| cookie.get_reply().unwrap().pixel())
         .map(|pixel| {
             let id = conn.generate_id();
@@ -43,7 +44,7 @@ fn main() {
     assert!(gc.next().is_none());
 
     let mut win_w: u16 = 108;
-    let mut win_h: u16 = 190;
+    let mut win_h: u16 = 204;
 
     let title = "VU meter";
 
