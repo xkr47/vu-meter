@@ -10,17 +10,17 @@ fn main() {
         0x5DE73D, // meter low
         0xFFFF00, // meter med
         0xFF0000, // meter high
-        0x0F6E0F, // grid low
-        0x6E6E0F, // grid med 1
-        0xB46E0F, // grid med 2
-        0x6E0F0F, // grid high
+        0x062806, // grid low
+        0x282806, // grid med 1
+        0x472806, // grid med 2
+        0x280F06, // grid high
     ].iter()
         .map(|rgb| [
             ((rgb >> 16) * 0x101) as u16,
             (((rgb >> 8) & 0xFF) * 0x101) as u16,
             ((rgb & 0xFF) * 0x101) as u16
         ])
-        .map(| [r,g,b]| xcb::alloc_color(&conn, colormap, r, g, b))
+        .map(|[r, g, b]| xcb::alloc_color(&conn, colormap, r, g, b))
         .collect::<Vec<xcb::AllocColorCookie>>()
         .into_iter()
         .map(|cookie| cookie.get_reply().unwrap().pixel())
@@ -114,20 +114,26 @@ fn main() {
                         ).collect();
                         xcb::poly_fill_rectangle(&conn, win, gc_meter_low, &on_rect);
 
-                        /*
-                        let segments: &[xcb::Segment] = &[
-                            xcb::Segment::new(
-                                x.0,
-                                y.0 *
-                                x.1,
-                            ),
-                            xcb::Segment::new(
-                                x.0,
-                                x.1,
-                            )
-                        ];
-                        xcb::poly_segment(&conn, win, gc_grid_med1, &segments);
-                         */
+                        let y1 = interp_f(y.1, y.0, 0.25) as i16;
+                        let y2 = interp_f(y.1, y.0, 0.5) as i16;
+                        let y3 = interp_f(y.1, y.0, 0.7) as i16;
+                        let y4 = interp_f(y.1, y.0, 0.83) as i16;
+                        let y5 = interp_f(y.1, y.0, 0.9) as i16;
+                        let y6 = interp_f(y.1, y.0, 0.96) as i16;
+                        xcb::poly_segment(&conn, win, gc_grid_low, &[
+                            xcb::Segment::new(x.0, y1, x.1, y1),
+                            xcb::Segment::new(x.0, y2, x.1, y2),
+                        ]);
+                        xcb::poly_segment(&conn, win, gc_grid_med1, &[
+                            xcb::Segment::new(x.0, y3, x.1, y3),
+                            xcb::Segment::new(x.0, y4, x.1, y4),
+                        ]);
+                        xcb::poly_segment(&conn, win, gc_grid_med2, &[
+                            xcb::Segment::new(x.0, y5, x.1, y5),
+                        ]);
+                        xcb::poly_segment(&conn, win, gc_grid_high, &[
+                            xcb::Segment::new(x.0, y6, x.1, y6),
+                        ]);
 
                         /* We flush the request */
                         conn.flush();
