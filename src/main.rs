@@ -95,7 +95,6 @@ fn main() {
             //(xcb::CW_BACK_PIXEL, screen.black_pixel()),
             (xcb::CW_EVENT_MASK,
              xcb::EVENT_MASK_EXPOSURE |
-                 xcb::EVENT_MASK_KEY_PRESS |
                  xcb::EVENT_MASK_STRUCTURE_NOTIFY
             ),
         ]
@@ -206,13 +205,6 @@ fn main() {
                         ]);
 
                         conn.flush();
-                    },
-                    xcb::KEY_PRESS => {
-                        let event: &xcb::KeyPressEvent = unsafe {
-                            xcb::cast_event(&event)
-                        };
-                        println!("Key '{}' pressed", event.detail());
-                        //break;
                     },
                     xcb::CONFIGURE_NOTIFY => {
                         let event: &xcb::ConfigureNotifyEvent = unsafe {
