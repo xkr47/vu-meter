@@ -5,8 +5,11 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use core::mem;
+use nix::sys::signalfd::signal::{signal, Signal, SigHandler};
 
 fn main() {
+    unsafe { signal(Signal::SIGHUP, SigHandler::SigIgn) }.unwrap();
+
     let matches = cli_args().get_matches();
     let channels = matches.value_of("channels").map(|p| p.parse::<u32>().unwrap()).unwrap();
 
