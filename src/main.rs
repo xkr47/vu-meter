@@ -116,18 +116,18 @@ fn main() {
 
     loop {
         let event = conn.wait_for_event();
-        let ch = {
-            let mut src = vu.lock().unwrap();
-            let copy = src.clone();
-            src.iter_mut().for_each(|i| *i = 0f32);
-            copy
-        };
         match event {
             None => { break; }
             Some(event) => {
                 let r = event.response_type() & !0x80;
                 match r {
                     xcb::EXPOSE => {
+                        let ch = {
+                            let mut src = vu.lock().unwrap();
+                            let copy = src.clone();
+                            src.iter_mut().for_each(|i| *i = 0f32);
+                            copy
+                        };
                         /*
                         let event : &xcb::ExposeEvent = unsafe {
                             xcb::cast_event(&event)
