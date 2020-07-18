@@ -4,6 +4,7 @@ use clap::{App, Arg};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use core::mem;
 
 fn main() {
     let matches = cli_args().get_matches();
@@ -126,8 +127,10 @@ fn main() {
                     xcb::EXPOSE => {
                         let ch = {
                             let mut src = vu.lock().unwrap();
-                            let copy = src.clone();
-                            src.iter_mut().for_each(|i| *i = 0f32);
+                            let len = src.len();
+                            let mut copy = Vec::with_capacity(len);
+                            copy.resize(len, 0f32);
+                            mem::swap(&mut copy, &mut *src);
                             copy
                         };
                         /*
