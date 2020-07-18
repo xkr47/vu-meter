@@ -1,6 +1,31 @@
 use xcb;
+use jack::*;
+use clap::{App, Arg};
+use std::sync::{Arc, Mutex};
 
 fn main() {
+    let matches = cli_args().get_matches();
+    let channels = matches.value_of("channels").map(|p| p.parse::<u32>().unwrap()).unwrap();
+
+    let client = create_client().expect("Failed to create Jack client");
+    let ports = setup_ports(&client, channels);
+
+    let process_handler_context = ProcessHandlerContext::new(
+        ports,
+    );
+
+    let vu = process_handler_context.vu();
+
+    let notification_handler_context = NotificationHandlerContext { };
+
+    let _ac = match client.activate_async(notification_handler_context, process_handler_context) {
+        Ok(ac) => ac,
+        Err(e) => {
+            println!("Failed to activate {:?}", e);
+            return;
+        }
+    };
+
     let (conn, screen_num) = xcb::Connection::connect(None).unwrap();
     let screen = conn.get_setup().roots().nth(screen_num as usize).unwrap();
 
@@ -71,9 +96,14 @@ fn main() {
                          xcb::ATOM_WM_NAME, xcb::ATOM_STRING, 8, title.as_bytes());
     conn.flush();
 
-    let ch = [0.00, 0.01, 0.45, 0.69, 0.71, 0.89, 0.91, 0.99, 1.00];
     loop {
         let event = conn.wait_for_event();
+        let ch = {
+            let mut src = vu.lock().unwrap();
+            let copy = src.clone();
+            src.iter_mut().for_each(|i| *i = 0f32);
+            copy
+        };
         match event {
             None => { break; }
             Some(event) => {
@@ -195,4 +225,220 @@ fn interp_f(a: i16, b: i16, pos: f32) -> f32 {
     a as f32 * (1f32 - pos)
         +
         b as f32 * pos
+}
+
+fn create_client() -> Result<Client, Error> {
+    let options = ClientOptions::NO_START_SERVER /* | ClientOptions::USE_EXACT_NAME */;
+    let (client, status) = Client::new("vumeter", options)?;
+    if !(status & ClientStatus::NAME_NOT_UNIQUE).is_empty() {
+        println!("We are not alone!");
+    }
+    Ok(client)
+}
+
+fn setup_ports(client: &Client, channels: u32) -> Vec<Port<AudioIn>> {
+    (0..channels).map(|chan|
+        client.register_port(&format!("in_{}", chan), jack::AudioIn::default()).expect(&format!("Failed to register port {}", chan))
+    ).collect()
+}
+
+struct ProcessHandlerContext {
+    ports: Vec<Port<AudioIn>>,
+    vu: Arc<Mutex<Vec<f32>>>,
+}
+
+impl ProcessHandlerContext {
+    fn new(
+        ports: Vec<Port<AudioIn>>,
+    ) -> ProcessHandlerContext {
+        let num = ports.len();
+        let mut vu = Vec::with_capacity(num);
+        vu.resize(num, 0f32);
+        ProcessHandlerContext {
+            ports,
+            vu: Arc::new(Mutex::new(vu)),
+        }
+    }
+
+    fn vu(&self) -> Arc<Mutex<Vec<f32>>> {
+        Arc::clone(&self.vu)
+    }
+}
+
+impl ProcessHandler for ProcessHandlerContext {
+    fn process(&mut self, _client: &Client, ps: &ProcessScope) -> Control {
+        let mut vu= self.vu.lock().unwrap();
+        self.ports.iter().enumerate().for_each(|(i, chan)| {
+            let max_of_chan = chan.as_slice(ps).iter().map(|s| s.abs()).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+            vu[i] = vu[i].max(max_of_chan);
+        });
+        Control::Continue
+    }
+}
+
+struct NotificationHandlerContext {}
+
+impl NotificationHandler for NotificationHandlerContext {
+    fn thread_init(&self, _: &Client) {}
+
+    /// Called when the JACK server shuts down the client thread. The function
+    /// must be written as if
+    /// it were an asynchronous POSIX signal handler --- use only async-safe
+    /// functions, and remember
+    /// that it is executed from another thread. A typical funcion might set a
+    /// flag or write to a
+    /// pipe so that the rest of the application knows that the JACK client
+    /// thread has shut down.
+    fn shutdown(&mut self, _status: ClientStatus, _reason: &str) {}
+
+    /// Called whenever "freewheel" mode is entered or leaving.
+    fn freewheel(&mut self, _: &Client, _is_freewheel_enabled: bool) {}
+
+    /// Called whenever the size of the buffer that will be passed to `process`
+    /// is about to change.
+    fn buffer_size(&mut self, _: &Client, _size: Frames) -> Control {
+        Control::Continue
+    }
+
+    /// Called whenever the system sample rate changes.
+    fn sample_rate(&mut self, _: &Client, _srate: Frames) -> Control {
+        Control::Continue
+    }
+
+    /// Called whenever a client is registered or unregistered
+    fn client_registration(&mut self, _: &Client, _name: &str, _is_registered: bool) {}
+
+    /// Called whenever a port is registered or unregistered
+    fn port_registration(&mut self, _: &Client, _port_id: PortId, _is_registered: bool) {}
+
+    /// Called whenever a port is renamed.
+    fn port_rename(
+        &mut self,
+        _: &Client,
+        _port_id: PortId,
+        _old_name: &str,
+        _new_name: &str,
+    ) -> Control {
+        Control::Continue
+    }
+
+    /// Called whenever ports are connected/disconnected to/from each other.
+    fn ports_connected(
+        &mut self,
+        _: &Client,
+        _port_id_a: PortId,
+        _port_id_b: PortId,
+        _are_connected: bool,
+    ) {
+    }
+
+    /// Called whenever the processing graph is reordered.
+    fn graph_reorder(&mut self, _: &Client) -> Control {
+        Control::Continue
+    }
+
+    /// Called whenever an xrun occurs.
+    ///
+    /// An xrun is a buffer under or over run, which means some data has been
+    /// missed.
+    fn xrun(&mut self, _: &Client) -> Control {
+        Control::Continue
+    }
+
+    /// Called whenever it is necessary to recompute the latencies for some or
+    /// all JACK ports.
+    ///
+    /// It will be called twice each time it is needed, once being passed
+    /// `CaptureLatency` and once
+    /// with `PlayBackLatency. See managing and determining latency for the
+    /// definition of each type
+    /// of latency and related functions. TODO: clear up the "see managing and
+    /// ..." in the
+    /// docstring.
+    ///
+    /// IMPORTANT: Most JACK clients do NOT need to register a latency callback.
+    ///
+    /// Clients that meed any of the following conditions do NOT need to
+    /// register a latency
+    /// callback:
+    ///
+    /// * have only input ports
+    ///
+    /// * have only output ports
+    ///
+    /// * their output is totally unrelated to their input
+    ///
+    /// * their output is not delayed relative to their input (i.e. data that
+    /// arrives in a `process`
+    /// is processed and output again in the same callback)
+    ///
+    /// Clients NOT registering a latency callback MUST also satisfy this
+    /// condition
+    ///
+    /// * have no multiple distinct internal signal pathways
+    ///
+    /// This means that if your client has more than 1 input and output port,
+    /// and considers them
+    /// always "correlated" (e.g. as a stereo pair), then there is only 1 (e.g.
+    /// stereo) signal
+    /// pathway through the client. This would be true, for example, of a
+    /// stereo FX rack client that
+    /// has a left/right input pair and a left/right output pair.
+    ///
+    /// However, this is somewhat a matter of perspective. The same FX rack
+    /// client could be
+    /// connected so that its two input ports were connected to entirely
+    /// separate sources. Under
+    /// these conditions, the fact that the client does not register a latency
+    /// callback MAY result
+    /// in port latency values being incorrect.
+    ///
+    /// Clients that do not meet any of those conditions SHOULD register a
+    /// latency callback.
+    ///
+    /// See the documentation for `jack_port_set_latency_range()` on how the
+    /// callback should
+    /// operate. Remember that the mode argument given to the latency callback
+    /// will need to be
+    /// passed into jack_port_set_latency_range()
+    fn latency(&mut self, _: &Client, _mode: LatencyType) {}
+}
+
+fn cli_args<'a, 'b>() -> App<'a, 'b> {
+    App::new("vu-meter")
+        .version("1.0")
+        .author("Jonas Berlin <xkr47@outerspace.dyndns.org>")
+        .about("Jack VU-Meter inspired by cadence-jackmeter")
+        .arg(Arg::with_name("channels")
+            .short("c")
+            .long("channels")
+            .value_name("NUM_CHANNELS")
+            .help("Sets the number of input channels (default 2)")
+            .takes_value(true)
+            .default_value("2")
+        )
+    /*
+    .arg(Arg::with_name("WAV")
+        .help("WAV file(s) to render")
+        .required(true)
+        .multiple(true)
+    )
+    .arg(Arg::with_name("verbose")
+        .short("v")
+        .long("verbose")
+        .help("Enable verbose mode"))
+    .arg(Arg::with_name("config")
+        .short("c")
+        .long("config")
+        .value_name("FILE")
+        .help("Sets a custom config file")
+        .takes_value(true))
+    .subcommand(SubCommand::with_name("test")
+        .about("controls testing features")
+        .version("1.3")
+        .author("Someone E. <someone_else@other.com>")
+        .arg(Arg::with_name("debug")
+            .short("d")
+            .help("print debug information verbosely")))
+            */
 }
