@@ -249,7 +249,7 @@ fn interp_f(a: i16, b: i16, pos: f32) -> f32 {
 
 fn create_client() -> Result<Client, Error> {
     let options = ClientOptions::NO_START_SERVER /* | ClientOptions::USE_EXACT_NAME */;
-    let (client, status) = Client::new("vumeter", options)?;
+    let (client, status) = Client::new("VU meter", options)?;
     if !(status & ClientStatus::NAME_NOT_UNIQUE).is_empty() {
         println!("We are not alone!");
     }
