@@ -105,7 +105,9 @@ fn main() {
         thread::spawn(move || {
             let refresh = Duration::from_millis(frame_dur_ms.max(50) as u64);
             loop {
-                xcb::clear_area(&conn, true, win, 0, 0, 10000, 10000);
+                let event = xcb::ExposeEvent::new(win, 0, 0, 0, 0, 0);
+                xcb::send_event(&conn, true, win, xcb::EVENT_MASK_EXPOSURE, &event);
+                //xcb::clear_area(&conn, true, win, 0, 0, 10000, 10000);
                 conn.flush();
                 thread::sleep(refresh);
             }
