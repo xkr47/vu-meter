@@ -8,5 +8,9 @@ edition = "2018"
 
 [dependencies]
 clap = "2.33"
-xcb = "0.9"
 jack = "0.6"
+
+[dependencies.xcb]
+version = "0.9"
+default-features = true
+features = ["thread"]

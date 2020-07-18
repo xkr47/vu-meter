@@ -2,6 +2,8 @@ use xcb;
 use jack::*;
 use clap::{App, Arg};
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 fn main() {
     let matches = cli_args().get_matches();
@@ -18,6 +20,8 @@ fn main() {
 
     let notification_handler_context = NotificationHandlerContext { };
 
+    let frame_dur_ms = 1000 * client.buffer_size() / client.sample_rate() as u32;
+
     let _ac = match client.activate_async(notification_handler_context, process_handler_context) {
         Ok(ac) => ac,
         Err(e) => {
@@ -27,6 +31,7 @@ fn main() {
     };
 
     let (conn, screen_num) = xcb::Connection::connect(None).unwrap();
+    let conn = Arc::new(conn);
     let screen = conn.get_setup().roots().nth(screen_num as usize).unwrap();
 
     let colormap = screen.default_colormap();
@@ -94,6 +99,19 @@ fn main() {
     xcb::map_window(&conn, win);
     xcb::change_property(&conn, xcb::PROP_MODE_REPLACE as u8, win,
                          xcb::ATOM_WM_NAME, xcb::ATOM_STRING, 8, title.as_bytes());
+
+    {
+        let conn = conn.clone();
+        thread::spawn(move || {
+            let refresh = Duration::from_millis(frame_dur_ms.max(50) as u64);
+            loop {
+                xcb::clear_area(&conn, true, win, 0, 0, 10000, 10000);
+                conn.flush();
+                thread::sleep(refresh);
+            }
+        });
+    }
+
     conn.flush();
 
     loop {
