@@ -39,43 +39,15 @@ fn main() {
     let screen = conn.get_setup().roots().nth(screen_num as usize).unwrap();
 
     let colormap = screen.default_colormap();
-    let gc_cookies = [
-        0x000000u32, // background
-        0x5DE73D, // meter low
-        0xFFFF00, // meter med
-        0xFF0000, // meter high
-        0x062806, // grid low
-        0x282806, // grid med 1
-        0x472806, // grid med 2
-        0x280F06, // grid high
-    ].iter()
-        .map(|rgb| [
-            ((rgb >> 16) * 0x101) as u16,
-            (((rgb >> 8) & 0xFF) * 0x101) as u16,
-            ((rgb & 0xFF) * 0x101) as u16
-        ])
-        .map(|[r, g, b]| xcb::alloc_color(&conn, colormap, r, g, b))
-        .collect::<Vec<xcb::AllocColorCookie>>();
 
-    let mut gc = gc_cookies.into_iter()
-        .map(|cookie| cookie.get_reply().unwrap().pixel())
-        .map(|pixel| {
-            let id = conn.generate_id();
-            xcb::create_gc(&conn, id, screen.root(), &[
-                (xcb::GC_FOREGROUND, pixel),
-                (xcb::GC_GRAPHICS_EXPOSURES, 0),
-            ]);
-            id
-        });
-    let gc_bg = gc.next().unwrap();
-    let gc_meter_low = gc.next().unwrap();
-    let gc_meter_med = gc.next().unwrap();
-    let gc_meter_high = gc.next().unwrap();
-    let gc_grid_low = gc.next().unwrap();
-    let gc_grid_med1 = gc.next().unwrap();
-    let gc_grid_med2 = gc.next().unwrap();
-    let gc_grid_high = gc.next().unwrap();
-    assert!(gc.next().is_none());
+    let gc_bg         = GcState::new(&*conn, &screen, colormap, 0x000000);
+    let gc_meter_low  = GcState::new(&*conn, &screen, colormap, 0x5DE73D);
+    let gc_meter_med  = GcState::new(&*conn, &screen, colormap, 0xFFFF00);
+    let gc_meter_high = GcState::new(&*conn, &screen, colormap, 0xFF0000);
+    let gc_grid_low   = GcState::new(&*conn, &screen, colormap, 0x062806);
+    let gc_grid_med1  = GcState::new(&*conn, &screen, colormap, 0x282806);
+    let gc_grid_med2  = GcState::new(&*conn, &screen, colormap, 0x472806);
+    let gc_grid_high  = GcState::new(&*conn, &screen, colormap, 0x280F06);
 
     let mut win_w: u16 = 108;
     let mut win_h: u16 = 204;
@@ -116,6 +88,15 @@ fn main() {
             }
         });
     }
+
+    let gc_bg = gc_bg.finalize();
+    let gc_meter_low = gc_meter_low.finalize();
+    let gc_meter_med = gc_meter_med.finalize();
+    let gc_meter_high = gc_meter_high.finalize();
+    let gc_grid_low = gc_grid_low.finalize();
+    let gc_grid_med1 = gc_grid_med1.finalize();
+    let gc_grid_med2 = gc_grid_med2.finalize();
+    let gc_grid_high = gc_grid_high.finalize();
 
     conn.flush();
 
@@ -218,6 +199,32 @@ fn main() {
                 }
             }
         }
+    }
+}
+
+struct GcState<'a,'b> {
+    cookie: xcb::AllocColorCookie<'a>,
+    screen: &'b xcb::Screen<'b>,
+}
+
+impl<'a,'b> GcState<'a,'b> {
+    fn new(conn: &'a xcb::Connection, screen: &'b xcb::Screen, colormap: xcb::Colormap, rgb: u32) -> GcState<'a,'b> {
+        let r = ((rgb >> 16) * 0x101) as u16;
+        let g = (((rgb >> 8) & 0xFF) * 0x101) as u16;
+        let b = ((rgb & 0xFF) * 0x101) as u16;
+        let cookie: xcb::AllocColorCookie = xcb::alloc_color(&conn, colormap, r, g, b);
+        GcState { cookie, screen }
+    }
+
+    fn finalize(self) -> u32 {
+        let conn = self.cookie.conn;
+        let pixel = self.cookie.get_reply().unwrap().pixel();
+        let id = conn.generate_id();
+        xcb::create_gc(conn, id, self.screen.root(), &[
+            (xcb::GC_FOREGROUND, pixel),
+            (xcb::GC_GRAPHICS_EXPOSURES, 0),
+        ]);
+        id
     }
 }
 
