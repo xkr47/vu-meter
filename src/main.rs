@@ -76,6 +76,7 @@ fn main() {
                          xcb::ATOM_WM_NAME, xcb::ATOM_STRING, 8, title.as_bytes());
 
     {
+        // thread sending expose events at even intervals
         let conn = conn.clone();
         thread::spawn(move || {
             let refresh = Duration::from_millis(frame_dur_ms.max(50) as u64);
