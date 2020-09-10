@@ -17,6 +17,10 @@ OPTIONS:
     -c, --channels <NUM_CHANNELS>    Sets the number of input channels [default: 2]
 ```
 
+# Screenshot
+
+![](vu-meter.png)
+
 # Compiling
 
 * [Install Rust](https://www.rust-lang.org/tools/install)
