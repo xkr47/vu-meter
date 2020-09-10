@@ -264,7 +264,7 @@ fn create_client() -> Result<Client, Error> {
 
 fn setup_ports(client: &Client, channels: u32) -> Vec<Port<AudioIn>> {
     (0..channels).map(|chan|
-        client.register_port(&format!("in_{}", chan + 1), jack::AudioIn::default()).expect(&format!("Failed to register port {}", chan))
+        client.register_port(&format!("in_{}", chan + 1), jack::AudioIn::default()).unwrap_or_else(|_| panic!("Failed to register port {}", chan))
     ).collect()
 }
 
