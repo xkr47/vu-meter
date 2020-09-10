@@ -1,16 +1,17 @@
-use xcb;
-use jack::*;
-use clap::{App, Arg};
+use core::mem;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use core::mem;
-use nix::sys::signalfd::signal::{signal, Signal, SigHandler};
+
+use clap::{App, Arg, ArgMatches};
+use jack::*;
+use nix::sys::signalfd::signal::{SigHandler, signal, Signal};
+use xcb;
 
 fn main() {
     unsafe { signal(Signal::SIGHUP, SigHandler::SigIgn) }.unwrap();
 
-    let matches = cli_args().get_matches();
+    let matches = cli_args();
     let channels = matches.value_of("channels").map(|p| p.parse::<u32>().unwrap()).unwrap();
 
     let client = create_client().expect("Failed to create Jack client");
@@ -430,7 +431,7 @@ impl NotificationHandler for NotificationHandlerContext {
     fn latency(&mut self, _: &Client, _mode: LatencyType) {}
 }
 
-fn cli_args<'a, 'b>() -> App<'a, 'b> {
+fn cli_args<'a>() -> ArgMatches<'a> {
     App::new("vu-meter")
         .version("1.0")
         .author("Jonas Berlin <xkr47@outerspace.dyndns.org>")
@@ -439,32 +440,9 @@ fn cli_args<'a, 'b>() -> App<'a, 'b> {
             .short("c")
             .long("channels")
             .value_name("NUM_CHANNELS")
-            .help("Sets the number of input channels (default 2)")
+            .help("Sets the number of input channels")
             .takes_value(true)
             .default_value("2")
         )
-    /*
-    .arg(Arg::with_name("WAV")
-        .help("WAV file(s) to render")
-        .required(true)
-        .multiple(true)
-    )
-    .arg(Arg::with_name("verbose")
-        .short("v")
-        .long("verbose")
-        .help("Enable verbose mode"))
-    .arg(Arg::with_name("config")
-        .short("c")
-        .long("config")
-        .value_name("FILE")
-        .help("Sets a custom config file")
-        .takes_value(true))
-    .subcommand(SubCommand::with_name("test")
-        .about("controls testing features")
-        .version("1.3")
-        .author("Someone E. <someone_else@other.com>")
-        .arg(Arg::with_name("debug")
-            .short("d")
-            .help("print debug information verbosely")))
-            */
+        .get_matches()
 }
