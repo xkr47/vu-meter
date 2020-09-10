@@ -6,7 +6,6 @@ use std::time::Duration;
 use clap::{App, Arg, ArgMatches};
 use jack::*;
 use nix::sys::signalfd::signal::{SigHandler, signal, Signal};
-use xcb;
 
 fn main() {
     unsafe { signal(Signal::SIGHUP, SigHandler::SigIgn) }.unwrap();
