@@ -1,6 +1,6 @@
 [package]
 name = "vu-meter"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Jonas Berlin <xkr47@outerspace.dyndns.org>"]
 edition = "2018"
 
