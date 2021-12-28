@@ -101,6 +101,8 @@ fn main() {
 
     conn.flush();
 
+    let mut prev_ch = vec![];
+    let mut prev_locations = vec![];
     loop {
         let event = conn.wait_for_event();
         match event {
@@ -109,16 +111,22 @@ fn main() {
                 let r = event.response_type() & !0x80;
                 match r {
                     xcb::EXPOSE => {
-                        let mut ch = vec![0f32; num_channels];
-                        let ch = {
-                            let mut src = vu.lock().unwrap();
-                            mem::swap(&mut ch, &mut *src);
-                            ch
-                        };
-                        /*
                         let event : &xcb::ExposeEvent = unsafe {
                             xcb::cast_event(&event)
                         };
+                        let is_fake_expose = event.width() == 0 && event.height() == 0;
+
+                        let mut ch = vec![0f32; num_channels];
+                        let ch = {
+                            let mut src = vu.lock().unwrap();
+                            if is_fake_expose && *src == prev_ch {
+                                continue;
+                            }
+                            mem::swap(&mut ch, &mut *src);
+                            ch
+                        };
+                        prev_ch = ch.clone();
+                        /*
                         let evt_x0 = event.x();
                         let evt_y0 = event.y();
                         let evt_x1 = evt_x0 + event.width() - 1;
@@ -149,6 +157,11 @@ fn main() {
                                 (x0, x1, y)
                             })
                             .collect::<Vec<(i16, i16, [i16; 5])>>();
+
+                        if is_fake_expose && locations == prev_locations {
+                            continue;
+                        }
+                        prev_locations = locations.clone();
 
                         for (i, gc) in [gc_bg, gc_meter_high, gc_meter_med, gc_meter_low].iter().enumerate() {
                             let r: Vec<xcb::Rectangle> = locations.iter().flat_map(
