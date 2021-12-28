@@ -128,14 +128,12 @@ fn main() {
                         let x: (i16, i16) = (0, win_w as i16 - 1);
                         let y: (i16, i16) = (0, win_h as i16 - 1);
 
-                        let e = ch.len();
-
                         // bar chart
                         let locations = ch.iter()
                             .enumerate()
                             .map(|(i, level)| {
-                                let x0 = interp_i(x.0, x.1, i, e);
-                                let x1 = interp_i(x.0, x.1, i + 1, e);
+                                let x0 = interp_i(x.0, x.1, i, num_channels);
+                                let x1 = interp_i(x.0, x.1, i + 1, num_channels);
                                 let yp = interp_f(y.1 + 1, y.0, *level) as i16;
                                 let y = if *level < 0.7 {
                                     [y.0, yp, yp, yp, y.1 + 1]
