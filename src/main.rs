@@ -109,13 +109,11 @@ fn main() {
                 let r = event.response_type() & !0x80;
                 match r {
                     xcb::EXPOSE => {
+                        let mut ch = vec![0f32; num_channels];
                         let ch = {
                             let mut src = vu.lock().unwrap();
-                            let len = src.len();
-                            let mut copy = Vec::with_capacity(len);
-                            copy.resize(len, 0f32);
-                            mem::swap(&mut copy, &mut *src);
-                            copy
+                            mem::swap(&mut ch, &mut *src);
+                            ch
                         };
                         /*
                         let event : &xcb::ExposeEvent = unsafe {
