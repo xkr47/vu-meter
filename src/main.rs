@@ -11,10 +11,10 @@ fn main() {
     unsafe { signal(Signal::SIGHUP, SigHandler::SigIgn) }.unwrap();
 
     let matches = cli_args();
-    let channels = matches.value_of("channels").map(|p| p.parse::<u32>().unwrap()).unwrap();
+    let num_channels = matches.value_of("channels").map(|p| p.parse::<usize>().unwrap()).unwrap();
 
     let client = create_client().expect("Failed to create Jack client");
-    let ports = setup_ports(&client, channels);
+    let ports = setup_ports(&client, num_channels);
 
     let process_handler_context = ProcessHandlerContext::new(
         ports,
@@ -262,8 +262,8 @@ fn create_client() -> Result<Client, Error> {
     Ok(client)
 }
 
-fn setup_ports(client: &Client, channels: u32) -> Vec<Port<AudioIn>> {
-    (0..channels).map(|chan|
+fn setup_ports(client: &Client, num_channels: usize) -> Vec<Port<AudioIn>> {
+    (0..num_channels).map(|chan|
         client.register_port(&format!("in_{}", chan + 1), jack::AudioIn::default()).unwrap_or_else(|_| panic!("Failed to register port {}", chan))
     ).collect()
 }
