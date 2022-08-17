@@ -119,10 +119,10 @@ fn main() {
                         let mut ch = vec![0f32; num_channels];
                         let ch = {
                             let mut src = vu.lock().unwrap();
-                            if is_fake_expose && *src == prev_ch {
+                            mem::swap(&mut ch, &mut *src);
+                            if is_fake_expose && ch == prev_ch {
                                 continue;
                             }
-                            mem::swap(&mut ch, &mut *src);
                             ch
                         };
                         prev_ch = ch.clone();
