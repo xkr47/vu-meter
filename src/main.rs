@@ -329,12 +329,6 @@ impl NotificationHandler for NotificationHandlerContext {
     /// Called whenever "freewheel" mode is entered or leaving.
     fn freewheel(&mut self, _: &Client, _is_freewheel_enabled: bool) {}
 
-    /// Called whenever the size of the buffer that will be passed to `process`
-    /// is about to change.
-    fn buffer_size(&mut self, _: &Client, _size: Frames) -> Control {
-        Control::Continue
-    }
-
     /// Called whenever the system sample rate changes.
     fn sample_rate(&mut self, _: &Client, _srate: Frames) -> Control {
         Control::Continue
@@ -379,64 +373,6 @@ impl NotificationHandler for NotificationHandlerContext {
     fn xrun(&mut self, _: &Client) -> Control {
         Control::Continue
     }
-
-    /// Called whenever it is necessary to recompute the latencies for some or
-    /// all JACK ports.
-    ///
-    /// It will be called twice each time it is needed, once being passed
-    /// `CaptureLatency` and once
-    /// with `PlayBackLatency. See managing and determining latency for the
-    /// definition of each type
-    /// of latency and related functions. TODO: clear up the "see managing and
-    /// ..." in the
-    /// docstring.
-    ///
-    /// IMPORTANT: Most JACK clients do NOT need to register a latency callback.
-    ///
-    /// Clients that meed any of the following conditions do NOT need to
-    /// register a latency
-    /// callback:
-    ///
-    /// * have only input ports
-    ///
-    /// * have only output ports
-    ///
-    /// * their output is totally unrelated to their input
-    ///
-    /// * their output is not delayed relative to their input (i.e. data that
-    /// arrives in a `process`
-    /// is processed and output again in the same callback)
-    ///
-    /// Clients NOT registering a latency callback MUST also satisfy this
-    /// condition
-    ///
-    /// * have no multiple distinct internal signal pathways
-    ///
-    /// This means that if your client has more than 1 input and output port,
-    /// and considers them
-    /// always "correlated" (e.g. as a stereo pair), then there is only 1 (e.g.
-    /// stereo) signal
-    /// pathway through the client. This would be true, for example, of a
-    /// stereo FX rack client that
-    /// has a left/right input pair and a left/right output pair.
-    ///
-    /// However, this is somewhat a matter of perspective. The same FX rack
-    /// client could be
-    /// connected so that its two input ports were connected to entirely
-    /// separate sources. Under
-    /// these conditions, the fact that the client does not register a latency
-    /// callback MAY result
-    /// in port latency values being incorrect.
-    ///
-    /// Clients that do not meet any of those conditions SHOULD register a
-    /// latency callback.
-    ///
-    /// See the documentation for `jack_port_set_latency_range()` on how the
-    /// callback should
-    /// operate. Remember that the mode argument given to the latency callback
-    /// will need to be
-    /// passed into jack_port_set_latency_range()
-    fn latency(&mut self, _: &Client, _mode: LatencyType) {}
 }
 
 fn cli_args<'a>() -> ArgMatches<'a> {
