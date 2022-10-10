@@ -273,7 +273,7 @@ fn create_client() -> Result<Client, Error> {
 
 fn setup_ports(client: &Client, num_channels: usize) -> Vec<Port<AudioIn>> {
     (0..num_channels).map(|chan|
-        client.register_port(&format!("in_{}", chan + 1), jack::AudioIn::default()).unwrap_or_else(|_| panic!("Failed to register port {}", chan))
+        client.register_port(&format!("in_{}", chan + 1), AudioIn::default()).unwrap_or_else(|_| panic!("Failed to register port {}", chan))
     ).collect()
 }
 
@@ -320,7 +320,7 @@ impl NotificationHandler for NotificationHandlerContext {
     /// must be written as if
     /// it were an asynchronous POSIX signal handler --- use only async-safe
     /// functions, and remember
-    /// that it is executed from another thread. A typical funcion might set a
+    /// that it is executed from another thread. A typical function might set a
     /// flag or write to a
     /// pipe so that the rest of the application knows that the JACK client
     /// thread has shut down.
