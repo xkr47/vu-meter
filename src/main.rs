@@ -1,4 +1,5 @@
 use core::mem;
+use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -14,6 +15,10 @@ struct Args {
     /// Sets the number of input channels
     #[arg(short, long, default_value_t=2)]
     channels: usize,
+
+    /// Automatically connect ports to vu-meter on startup. Format is `channel:port` where `channel` is the VU meter channel number starting from 1 and `port` is the output port to connect to. Can be given any number of times.
+    #[arg(short='C', long)]
+    connect: Vec<String>,
 }
 
 fn main() {
@@ -23,6 +28,7 @@ fn main() {
     let num_channels = args.channels;
 
     let client = create_client().expect("Failed to create Jack client");
+    let client_name = client.name().to_string();
     let ports = setup_ports(&client, num_channels);
 
     let process_handler_context = ProcessHandlerContext::new(
@@ -35,13 +41,18 @@ fn main() {
 
     let frame_dur_ms = 1000 * client.buffer_size() / client.sample_rate() as u32;
 
-    let _ac = match client.activate_async(notification_handler_context, process_handler_context) {
+    let ac = match client.activate_async(notification_handler_context, process_handler_context) {
         Ok(ac) => ac,
         Err(e) => {
             println!("Failed to activate {:?}", e);
             return;
         }
     };
+
+    if let Err(err) = connect_ports(client_name, &ac, args.connect, num_channels) {
+        println!("Failed to connect ports: {err:#?}");
+        exit(1);
+    }
 
     let (conn, screen_num) = xcb::Connection::connect(None).unwrap();
     let conn = Arc::new(conn);
@@ -284,6 +295,25 @@ fn setup_ports(client: &Client, num_channels: usize) -> Vec<Port<AudioIn>> {
     (0..num_channels).map(|chan|
         client.register_port(&format!("in_{}", chan + 1), AudioIn::default()).unwrap_or_else(|_| panic!("Failed to register port {}", chan))
     ).collect()
+}
+
+fn connect_ports<T, U>(client_name: String, ac: &AsyncClient<T, U>, ports: Vec<String>, num_channels: usize) -> Result<(), Error> {
+    let client = ac.as_client();
+    ports.iter()
+        .map(|arg| {
+            let mut s = arg.splitn(2, ':');
+            let num: usize = s.next().expect("Missing channel number").parse()
+                .unwrap_or_else(|_| panic!("Malformed channel number, expected number in range 1–{}", num_channels));
+            let port = s.next().expect("Missing port");
+            if num < 1 || num > num_channels {
+                panic!("Bad channel number, should be in range 1–{}", num_channels);
+            }
+            (num, port)
+        })
+        .for_each(|(channel, port)|
+            client.connect_ports_by_name(port, &format!("{}:{}", client_name, channel))
+                .unwrap_or_else(|e| panic!("Failed to connect port `{}` to channel {}: {:#?}", port, channel, e)));
+    Ok(())
 }
 
 struct ProcessHandlerContext {
