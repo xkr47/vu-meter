@@ -3,15 +3,24 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use clap::{App, Arg, ArgMatches};
+use clap::Parser;
 use jack::*;
 use nix::sys::signalfd::signal::{SigHandler, signal, Signal};
+
+/// Jack VU-Meter inspired by cadence-jackmeter
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Sets the number of input channels
+    #[arg(short, long, default_value_t=2)]
+    channels: usize,
+}
 
 fn main() {
     unsafe { signal(Signal::SIGHUP, SigHandler::SigIgn) }.unwrap();
 
-    let matches = cli_args();
-    let num_channels = matches.value_of("channels").map(|p| p.parse::<usize>().unwrap()).unwrap();
+    let args: Args = Args::parse();
+    let num_channels = args.channels;
 
     let client = create_client().expect("Failed to create Jack client");
     let ports = setup_ports(&client, num_channels);
@@ -373,20 +382,4 @@ impl NotificationHandler for NotificationHandlerContext {
     fn xrun(&mut self, _: &Client) -> Control {
         Control::Continue
     }
-}
-
-fn cli_args<'a>() -> ArgMatches<'a> {
-    App::new("vu-meter")
-        .version("1.0")
-        .author("Jonas Berlin <xkr47@outerspace.dyndns.org>")
-        .about("Jack VU-Meter inspired by cadence-jackmeter")
-        .arg(Arg::with_name("channels")
-            .short("c")
-            .long("channels")
-            .value_name("NUM_CHANNELS")
-            .help("Sets the number of input channels")
-            .takes_value(true)
-            .default_value("2")
-        )
-        .get_matches()
 }
