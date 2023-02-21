@@ -231,7 +231,7 @@ impl<'a,'b> GcState<'a,'b> {
         let r = ((rgb >> 16) * 0x101) as u16;
         let g = (((rgb >> 8) & 0xFF) * 0x101) as u16;
         let b = ((rgb & 0xFF) * 0x101) as u16;
-        let cookie: xcb::AllocColorCookie = xcb::alloc_color(&conn, colormap, r, g, b);
+        let cookie: xcb::AllocColorCookie = xcb::alloc_color(conn, colormap, r, g, b);
         GcState { cookie, screen }
     }
 
