@@ -311,8 +311,15 @@ fn connect_ports<T, U>(client_name: String, ac: &AsyncClient<T, U>, ports: Vec<S
             (num, port)
         })
         .for_each(|(channel, port)|
-            client.connect_ports_by_name(port, &format!("{}:{}", client_name, channel))
-                .unwrap_or_else(|e| panic!("Failed to connect port `{}` to channel {}: {:#?}", port, channel, e)));
+            client.connect_ports_by_name(port, &format!("{}:in_{}", client_name, channel))
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to connect port `{}` to channel {}: {:#?}", port, channel, e);
+                    eprintln!("Available:");
+                    for port in client.ports(None, Some(AudioOut.jack_port_type()), PortFlags::IS_OUTPUT) {
+                        eprintln!("  - `{}`", port);
+                    }
+                    panic!("Bad connection");
+                }));
     Ok(())
 }
 
