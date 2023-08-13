@@ -44,17 +44,23 @@ fn main() {
     let ac = match client.activate_async(notification_handler_context, process_handler_context) {
         Ok(ac) => ac,
         Err(e) => {
-            println!("Failed to activate {:?}", e);
+            eprintln!("Failed to activate {:?}", e);
             return;
         }
     };
 
     if let Err(err) = connect_ports(client_name, &ac, args.connect, num_channels) {
-        println!("Failed to connect ports: {err:#?}");
+        eprintln!("Failed to connect ports: {err:#?}");
         exit(1);
     }
 
-    let (conn, screen_num) = xcb::Connection::connect(None).unwrap();
+    let (conn, screen_num) = match xcb::Connection::connect(None) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to connect to X server: {:?}", e);
+            exit(1);
+        }
+    };
     let conn = Arc::new(conn);
     let screen = conn.get_setup().roots().nth(screen_num as usize).unwrap();
 
