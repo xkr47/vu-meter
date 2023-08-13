@@ -6,16 +6,17 @@ This is heavily inspired by the [cadence-jackmeter](https://github.com/falkTX/Ca
 # Usage
 
 ```
-USAGE:
-    vu-meter [OPTIONS]
+Jack VU-Meter inspired by cadence-jackmeter
 
-FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
+Usage: vu-meter [OPTIONS]
 
-OPTIONS:
-    -c, --channels <NUM_CHANNELS>    Sets the number of input channels [default: 2]
+Options:
+  -c, --channels <CHANNELS>  Sets the number of input channels [default: 2]
+  -C, --connect <CONNECT>    Automatically connect ports to vu-meter on startup. Format is `channel:port` where `channel` is the VU meter channel number starting from 1 and `port` is the output port to connect to. Can be given any number of times
+  -h, --help                 Print help
+  -V, --version              Print version
 ```
+N.B. it does not automatically reconnect connections requested with `-C`/`--connect` if they later get disconnected for any reason. It also does not reconnect if JACK is shut down.
 
 # Screenshot
 
