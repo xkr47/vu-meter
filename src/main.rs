@@ -339,8 +339,8 @@ fn connect_ports<T, U>(ac: &AsyncClient<T, U>, ports: Vec<String>, dst_ports: Ve
     let num_channels = dst_ports.len();
     ports.iter()
         .map(|arg| {
-            let optional = arg.ends_with("?");
-            let arg = if optional { &arg[..arg.len()-1] } else { &arg };
+            let optional = arg.ends_with('?');
+            let arg = if optional { &arg[..arg.len()-1] } else { arg };
             let mut s = arg.splitn(2, ':');
             let num: usize = s.next().expect("Missing channel number").parse()
                 .unwrap_or_else(|_| panic!("Malformed channel number, expected number in range 1–{}", num_channels));
