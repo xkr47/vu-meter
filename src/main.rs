@@ -39,11 +39,9 @@ fn main() {
 
     let vu = process_handler_context.vu();
 
-    let notification_handler_context = NotificationHandlerContext {};
-
     let frame_dur_ms = 1000 * client.buffer_size() / client.sample_rate() as u32;
 
-    let ac = match client.activate_async(notification_handler_context, process_handler_context) {
+    let ac = match client.activate_async((), process_handler_context) {
         Ok(ac) => ac,
         Err(e) => {
             eprintln!("Failed to activate {:?}", e);
@@ -422,7 +420,3 @@ impl ProcessHandler for ProcessHandlerContext {
         Control::Continue
     }
 }
-
-struct NotificationHandlerContext {}
-
-impl NotificationHandler for NotificationHandlerContext {}
