@@ -7,6 +7,8 @@ use std::time::Duration;
 use clap::Parser;
 use jack::*;
 use nix::sys::signalfd::signal::{SigHandler, signal, Signal};
+use xcb::x;
+use xcb::x::{PropMode, SendEventDest};
 
 /// Jack VU-Meter inspired by cadence-jackmeter
 #[derive(Parser, Debug)]
@@ -66,40 +68,47 @@ fn main() {
 
     let colormap = screen.default_colormap();
 
-    let gc_bg = GcState::new(&conn, &screen, colormap, 0x000000);
-    let gc_meter_low = GcState::new(&conn, &screen, colormap, 0x5DE73D);
-    let gc_meter_med = GcState::new(&conn, &screen, colormap, 0xFFFF00);
-    let gc_meter_high = GcState::new(&conn, &screen, colormap, 0xFF0000);
-    let gc_grid_low = GcState::new(&conn, &screen, colormap, 0x062806);
-    let gc_grid_med1 = GcState::new(&conn, &screen, colormap, 0x282806);
-    let gc_grid_med2 = GcState::new(&conn, &screen, colormap, 0x472806);
-    let gc_grid_high = GcState::new(&conn, &screen, colormap, 0x280F06);
+    let gc_bg = GcState::new(&conn, screen, colormap, 0x000000);
+    let gc_meter_low = GcState::new(&conn, screen, colormap, 0x5DE73D);
+    let gc_meter_med = GcState::new(&conn, screen, colormap, 0xFFFF00);
+    let gc_meter_high = GcState::new(&conn, screen, colormap, 0xFF0000);
+    let gc_grid_low = GcState::new(&conn, screen, colormap, 0x062806);
+    let gc_grid_med1 = GcState::new(&conn, screen, colormap, 0x282806);
+    let gc_grid_med2 = GcState::new(&conn, screen, colormap, 0x472806);
+    let gc_grid_high = GcState::new(&conn, screen, colormap, 0x280F06);
 
     let mut win_w: u16 = 108;
     let mut win_h: u16 = 204;
 
     let title = "VU meter";
 
-    let win = conn.generate_id();
-    xcb::create_window(&conn,
-                       xcb::COPY_FROM_PARENT as u8,
-                       win,
-                       screen.root(),
-                       0, 0,
-                       win_w, win_h,
-                       10,
-                       xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
-                       screen.root_visual(), &[
-            //(xcb::CW_BACK_PIXEL, screen.black_pixel()),
-            (xcb::CW_EVENT_MASK,
-             xcb::EVENT_MASK_EXPOSURE |
-                 xcb::EVENT_MASK_STRUCTURE_NOTIFY
-            ),
+    let win: x::Window = conn.generate_id();
+    conn.send_request(&x::CreateWindow {
+        depth: x::COPY_FROM_PARENT as u8,
+        wid: win,
+        parent: screen.root(),
+        x: 0,
+        y: 0,
+        width: win_w,
+        height: win_h,
+        border_width: 10,
+        class: x::WindowClass::InputOutput,
+        visual: screen.root_visual(),
+        value_list: &[
+            //x::Cw::BackPixel(screen.white_pixel()),
+            x::Cw::EventMask(x::EventMask::EXPOSURE | x::EventMask::STRUCTURE_NOTIFY),
         ],
-    );
-    xcb::map_window(&conn, win);
-    xcb::change_property(&conn, xcb::PROP_MODE_REPLACE as u8, win,
-                         xcb::ATOM_WM_NAME, xcb::ATOM_STRING, 8, title.as_bytes());
+    });
+    conn.send_request(&x::MapWindow {
+        window: win,
+    });
+    conn.send_request(&x::ChangeProperty {
+        mode: PropMode::Replace,
+        window: win,
+        property: x::ATOM_WM_NAME,
+        r#type: x::ATOM_STRING,
+        data: title.as_bytes(),
+    });
 
     {
         // thread sending expose events at even intervals
@@ -107,10 +116,13 @@ fn main() {
         thread::spawn(move || {
             let refresh = Duration::from_millis(frame_dur_ms.max(50) as u64);
             loop {
-                let event = xcb::ExposeEvent::new(win, 0, 0, 0, 0, 0);
-                xcb::send_event(&conn, true, win, xcb::EVENT_MASK_EXPOSURE, &event);
-                //xcb::clear_area(&conn, true, win, 0, 0, 10000, 10000);
-                conn.flush();
+                conn.send_request(&x::SendEvent {
+                    propagate: true,
+                    destination: SendEventDest::Window(win),
+                    event_mask: x::EventMask::EXPOSURE,
+                    event: &x::ExposeEvent::new(win, 0, 0, 0, 0, 0),
+                });
+                conn.flush().unwrap();
                 thread::sleep(refresh);
             }
         });
@@ -125,21 +137,17 @@ fn main() {
     let gc_grid_med2 = gc_grid_med2.finalize();
     let gc_grid_high = gc_grid_high.finalize();
 
-    conn.flush();
+    conn.flush().unwrap();
 
     let mut prev_ch = vec![];
     let mut prev_locations = vec![];
     loop {
         let event = conn.wait_for_event();
         match event {
-            None => { break; }
-            Some(event) => {
-                let r = event.response_type() & !0x80;
+            Err(e) => { eprintln!("Error {e:?}"); break; }
+            Ok(xcb::Event::X(r)) => {
                 match r {
-                    xcb::EXPOSE => {
-                        let event: &xcb::ExposeEvent = unsafe {
-                            xcb::cast_event(&event)
-                        };
+                    x::Event::Expose(event) => {
                         let is_fake_expose = event.width() == 0 && event.height() == 0;
 
                         let mut ch = vec![0f32; num_channels];
@@ -190,12 +198,16 @@ fn main() {
                         prev_locations = locations.clone();
 
                         for (i, gc) in [gc_bg, gc_meter_high, gc_meter_med, gc_meter_low].iter().enumerate() {
-                            let r: Vec<xcb::Rectangle> = locations.iter().flat_map(
+                            let r: Vec<x::Rectangle> = locations.iter().flat_map(
                                 |(x0, x1, y)|
                                     rect(*x0, *x1, y[i], y[i + 1] - 1)
                             ).collect();
                             if !r.is_empty() {
-                                xcb::poly_fill_rectangle(&conn, win, *gc, &r);
+                                conn.send_request(&x::PolyFillRectangle {
+                                    drawable: x::Drawable::Window(win),
+                                    gc: *gc,
+                                    rectangles: &r,
+                                });
                             }
                         }
 
@@ -206,27 +218,40 @@ fn main() {
                         let y4 = interp_f(y.1, y.0, 0.83) as i16;
                         let y5 = interp_f(y.1, y.0, 0.9) as i16;
                         let y6 = interp_f(y.1, y.0, 0.96) as i16;
-                        xcb::poly_segment(&conn, win, gc_grid_low, &[
-                            xcb::Segment::new(x.0, y1, x.1, y1),
-                            xcb::Segment::new(x.0, y2, x.1, y2),
-                        ]);
-                        xcb::poly_segment(&conn, win, gc_grid_med1, &[
-                            xcb::Segment::new(x.0, y3, x.1, y3),
-                            xcb::Segment::new(x.0, y4, x.1, y4),
-                        ]);
-                        xcb::poly_segment(&conn, win, gc_grid_med2, &[
-                            xcb::Segment::new(x.0, y5, x.1, y5),
-                        ]);
-                        xcb::poly_segment(&conn, win, gc_grid_high, &[
-                            xcb::Segment::new(x.0, y6, x.1, y6),
-                        ]);
+                        conn.send_request(&x::PolySegment {
+                            drawable: x::Drawable::Window(win),
+                            gc: gc_grid_low,
+                            segments: &[
+                                x::Segment { x1: x.0, y1,     x2: x.1, y2: y1 },
+                                x::Segment { x1: x.0, y1: y2, x2: x.1, y2 },
+                            ]
+                        });
+                        conn.send_request(&x::PolySegment {
+                            drawable: x::Drawable::Window(win),
+                            gc: gc_grid_med1,
+                            segments: &[
+                                x::Segment { x1: x.0, y1: y3, x2: x.1, y2: y3 },
+                                x::Segment { x1: x.0, y1: y4, x2: x.1, y2: y4 },
+                            ]
+                        });
+                        conn.send_request(&x::PolySegment {
+                            drawable: x::Drawable::Window(win),
+                            gc: gc_grid_med2,
+                            segments: &[
+                                x::Segment { x1: x.0, y1: y5, x2: x.1, y2: y5 },
+                            ]
+                        });
+                        conn.send_request(&x::PolySegment {
+                            drawable: x::Drawable::Window(win),
+                            gc: gc_grid_high,
+                            segments: &[
+                                x::Segment { x1: x.0, y1: y6, x2: x.1, y2: y6 },
+                            ]
+                        });
 
-                        conn.flush();
+                        conn.flush().unwrap();
                     }
-                    xcb::CONFIGURE_NOTIFY => {
-                        let event: &xcb::ConfigureNotifyEvent = unsafe {
-                            xcb::cast_event(&event)
-                        };
+                    x::Event::ConfigureNotify(event) => {
                         win_w = event.width();
                         win_h = event.height();
                         //println!("Resize: {} x {}", win_w, win_h);
@@ -234,39 +259,44 @@ fn main() {
                     _ => {}
                 }
             }
+            Ok(_) => {}
         }
     }
 }
 
 struct GcState<'a, 'b> {
-    cookie: xcb::AllocColorCookie<'a>,
-    screen: &'b xcb::Screen<'b>,
+    cookie: x::AllocColorCookie,
+    conn: &'a xcb::Connection,
+    screen: &'b x::Screen,
 }
 
 impl<'a, 'b> GcState<'a, 'b> {
-    fn new(conn: &'a xcb::Connection, screen: &'b xcb::Screen, colormap: xcb::Colormap, rgb: u32) -> GcState<'a, 'b> {
+    fn new(conn: &'a xcb::Connection, screen: &'b x::Screen, colormap: x::Colormap, rgb: u32) -> GcState<'a, 'b> {
         let r = ((rgb >> 16) * 0x101) as u16;
         let g = (((rgb >> 8) & 0xFF) * 0x101) as u16;
         let b = ((rgb & 0xFF) * 0x101) as u16;
-        let cookie: xcb::AllocColorCookie = xcb::alloc_color(conn, colormap, r, g, b);
-        GcState { cookie, screen }
+        let cookie = conn.send_request(&x::AllocColor { cmap: colormap, red: r, green: g, blue: b });
+        GcState { cookie, conn, screen }
     }
 
-    fn finalize(self) -> u32 {
-        let conn = self.cookie.conn;
-        let pixel = self.cookie.get_reply().unwrap().pixel();
-        let id = conn.generate_id();
-        xcb::create_gc(conn, id, self.screen.root(), &[
-            (xcb::GC_FOREGROUND, pixel),
-            (xcb::GC_GRAPHICS_EXPOSURES, 0),
-        ]);
+    fn finalize(self) -> x::Gcontext {
+        let pixel = self.conn.wait_for_reply(self.cookie).unwrap().pixel();
+        let id = self.conn.generate_id();
+        self.conn.send_request(&x::CreateGc {
+            cid: id,
+            drawable: x::Drawable::Window(self.screen.root()),
+            value_list: &[
+                x::Gc::Foreground(pixel),
+                x::Gc::GraphicsExposures(false),
+            ],
+        });
         id
     }
 }
 
-fn rect(x0: i16, x1: i16, y0: i16, y1: i16) -> Option<xcb::Rectangle> {
+fn rect(x0: i16, x1: i16, y0: i16, y1: i16) -> Option<x::Rectangle> {
     if x1 >= x0 && y1 >= y0 {
-        Some(xcb::Rectangle::new(x0, y0, (x1 - x0 + 1) as u16, (y1 - y0 + 1) as u16))
+        Some(x::Rectangle { x: x0, y: y0, width: (x1 - x0 + 1) as u16, height: (y1 - y0 + 1) as u16 })
     } else {
         None
     }

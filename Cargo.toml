@@ -10,8 +10,4 @@ edition = "2021"
 clap = { version = "4", features = [ "derive" ] }
 jack = "0.11"
 nix = { version = "0.28", features = [ "signal" ] }
-
-[dependencies.xcb]
-version = "0.9"
-default-features = true
-features = ["thread"]
+xcb = "1"
