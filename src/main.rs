@@ -16,7 +16,7 @@ struct Args {
     #[arg(short, long, default_value_t = 2)]
     channels: usize,
 
-    /// Automatically connect ports to vu-meter on startup. Format is `channel:port` where `channel` is the VU meter channel number starting from 1 and `port` is the output port to connect to. Can be given any number of times.
+    /// Automatically connect ports to vu-meter on startup. Format is `channel:port[?]` where `channel` is the VU meter channel number starting from 1 and `port` is the output port to connect to. Can be given any number of times. Using a "?" suffix means connection is optional and will not fail startup.
     #[arg(short = 'C', long)]
     connect: Vec<String>,
 }
@@ -28,8 +28,8 @@ fn main() {
     let num_channels = args.channels;
 
     let client = create_client().expect("Failed to create Jack client");
-    let client_name = client.name().to_string();
     let ports = setup_ports(&client, num_channels);
+    let ports_unowned = ports.iter().map(|p| p.clone_unowned()).collect::<Vec<_>>();
 
     let process_handler_context = ProcessHandlerContext::new(
         ports,
@@ -49,7 +49,7 @@ fn main() {
         }
     };
 
-    if let Err(err) = connect_ports(client_name, &ac, args.connect, num_channels) {
+    if let Err(err) = connect_ports(&ac, args.connect, ports_unowned) {
         eprintln!("Failed to connect ports: {err:#?}");
         exit(1);
     }
@@ -304,10 +304,13 @@ fn setup_ports(client: &Client, num_channels: usize) -> Vec<Port<AudioIn>> {
     ).collect()
 }
 
-fn connect_ports<T, U>(client_name: String, ac: &AsyncClient<T, U>, ports: Vec<String>, num_channels: usize) -> Result<(), Error> {
+fn connect_ports<T, U>(ac: &AsyncClient<T, U>, ports: Vec<String>, dst_ports: Vec<Port<Unowned>>) -> Result<(), Error> {
     let client = ac.as_client();
+    let num_channels = dst_ports.len();
     ports.iter()
         .map(|arg| {
+            let optional = arg.ends_with("?");
+            let arg = if optional { &arg[..arg.len()-1] } else { &arg };
             let mut s = arg.splitn(2, ':');
             let num: usize = s.next().expect("Missing channel number").parse()
                 .unwrap_or_else(|_| panic!("Malformed channel number, expected number in range 1–{}", num_channels));
@@ -315,18 +318,44 @@ fn connect_ports<T, U>(client_name: String, ac: &AsyncClient<T, U>, ports: Vec<S
             if num < 1 || num > num_channels {
                 panic!("Bad channel number, should be in range 1–{}", num_channels);
             }
-            (num, port)
+            (num, port, optional)
         })
-        .for_each(|(channel, port)|
-            client.connect_ports_by_name(port, &format!("{}:in_{}", client_name, channel))
-                .unwrap_or_else(|e| {
-                    eprintln!("Failed to connect port `{}` to channel {}: {:#?}", port, channel, e);
+        .filter_map(|(dst_channel, src_port_name, optional)| {
+            let src_port = match client.port_by_name(src_port_name) {
+                Some(p) => p,
+                None => {
+                    eprintln!("No such port `{}` to connect to channel {}", src_port_name, dst_channel);
                     eprintln!("Available:");
                     for port in client.ports(None, Some(AudioOut.jack_port_type()), PortFlags::IS_OUTPUT) {
                         eprintln!("  - `{}`", port);
                     }
-                    panic!("Bad connection");
-                }));
+                    if optional {
+                        return None
+                    } else {
+                        panic!("Bad port name");
+                    }
+                }
+            };
+            if !src_port.flags().contains(PortFlags::IS_OUTPUT) {
+                panic!("Port `{}` is not an output port!", src_port_name);
+            }
+            let dst_port = &dst_ports[dst_channel - 1];
+            let src_port_type = src_port.port_type().unwrap();
+            let dst_port_type = dst_port.port_type().unwrap();
+            if src_port_type != dst_port_type {
+                panic!("Port `{n}` has wrong type — expected {e} but got {a}", n = src_port_name, e = dst_port_type, a = src_port_type);
+            }
+            Some((src_port_name, src_port, dst_channel, dst_port, optional))
+        })
+        .for_each(|(src_port_name, src_port, dst_channel, dst_port, optional)| {
+            client.connect_ports(&src_port, dst_port)
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to connect port `{}` to channel {}: {:#?}", src_port_name, dst_channel, e);
+                    if !optional {
+                        panic!("Bad connection");
+                    }
+                });
+        });
     Ok(())
 }
 
