@@ -13,11 +13,11 @@ use nix::sys::signalfd::signal::{SigHandler, signal, Signal};
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Sets the number of input channels
-    #[arg(short, long, default_value_t=2)]
+    #[arg(short, long, default_value_t = 2)]
     channels: usize,
 
     /// Automatically connect ports to vu-meter on startup. Format is `channel:port` where `channel` is the VU meter channel number starting from 1 and `port` is the output port to connect to. Can be given any number of times.
-    #[arg(short='C', long)]
+    #[arg(short = 'C', long)]
     connect: Vec<String>,
 }
 
@@ -37,7 +37,7 @@ fn main() {
 
     let vu = process_handler_context.vu();
 
-    let notification_handler_context = NotificationHandlerContext { };
+    let notification_handler_context = NotificationHandlerContext {};
 
     let frame_dur_ms = 1000 * client.buffer_size() / client.sample_rate() as u32;
 
@@ -66,14 +66,14 @@ fn main() {
 
     let colormap = screen.default_colormap();
 
-    let gc_bg         = GcState::new(&conn, &screen, colormap, 0x000000);
-    let gc_meter_low  = GcState::new(&conn, &screen, colormap, 0x5DE73D);
-    let gc_meter_med  = GcState::new(&conn, &screen, colormap, 0xFFFF00);
+    let gc_bg = GcState::new(&conn, &screen, colormap, 0x000000);
+    let gc_meter_low = GcState::new(&conn, &screen, colormap, 0x5DE73D);
+    let gc_meter_med = GcState::new(&conn, &screen, colormap, 0xFFFF00);
     let gc_meter_high = GcState::new(&conn, &screen, colormap, 0xFF0000);
-    let gc_grid_low   = GcState::new(&conn, &screen, colormap, 0x062806);
-    let gc_grid_med1  = GcState::new(&conn, &screen, colormap, 0x282806);
-    let gc_grid_med2  = GcState::new(&conn, &screen, colormap, 0x472806);
-    let gc_grid_high  = GcState::new(&conn, &screen, colormap, 0x280F06);
+    let gc_grid_low = GcState::new(&conn, &screen, colormap, 0x062806);
+    let gc_grid_med1 = GcState::new(&conn, &screen, colormap, 0x282806);
+    let gc_grid_med2 = GcState::new(&conn, &screen, colormap, 0x472806);
+    let gc_grid_high = GcState::new(&conn, &screen, colormap, 0x280F06);
 
     let mut win_w: u16 = 108;
     let mut win_h: u16 = 204;
@@ -95,7 +95,7 @@ fn main() {
              xcb::EVENT_MASK_EXPOSURE |
                  xcb::EVENT_MASK_STRUCTURE_NOTIFY
             ),
-        ]
+        ],
     );
     xcb::map_window(&conn, win);
     xcb::change_property(&conn, xcb::PROP_MODE_REPLACE as u8, win,
@@ -137,7 +137,7 @@ fn main() {
                 let r = event.response_type() & !0x80;
                 match r {
                     xcb::EXPOSE => {
-                        let event : &xcb::ExposeEvent = unsafe {
+                        let event: &xcb::ExposeEvent = unsafe {
                             xcb::cast_event(&event)
                         };
                         let is_fake_expose = event.width() == 0 && event.height() == 0;
@@ -192,7 +192,7 @@ fn main() {
                         for (i, gc) in [gc_bg, gc_meter_high, gc_meter_med, gc_meter_low].iter().enumerate() {
                             let r: Vec<xcb::Rectangle> = locations.iter().flat_map(
                                 |(x0, x1, y)|
-                                    rect(*x0, *x1, y[i], y[i+1]-1)
+                                    rect(*x0, *x1, y[i], y[i + 1] - 1)
                             ).collect();
                             if !r.is_empty() {
                                 xcb::poly_fill_rectangle(&conn, win, *gc, &r);
@@ -222,7 +222,7 @@ fn main() {
                         ]);
 
                         conn.flush();
-                    },
+                    }
                     xcb::CONFIGURE_NOTIFY => {
                         let event: &xcb::ConfigureNotifyEvent = unsafe {
                             xcb::cast_event(&event)
@@ -230,7 +230,7 @@ fn main() {
                         win_w = event.width();
                         win_h = event.height();
                         //println!("Resize: {} x {}", win_w, win_h);
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -238,13 +238,13 @@ fn main() {
     }
 }
 
-struct GcState<'a,'b> {
+struct GcState<'a, 'b> {
     cookie: xcb::AllocColorCookie<'a>,
     screen: &'b xcb::Screen<'b>,
 }
 
-impl<'a,'b> GcState<'a,'b> {
-    fn new(conn: &'a xcb::Connection, screen: &'b xcb::Screen, colormap: xcb::Colormap, rgb: u32) -> GcState<'a,'b> {
+impl<'a, 'b> GcState<'a, 'b> {
+    fn new(conn: &'a xcb::Connection, screen: &'b xcb::Screen, colormap: xcb::Colormap, rgb: u32) -> GcState<'a, 'b> {
         let r = ((rgb >> 16) * 0x101) as u16;
         let g = (((rgb >> 8) & 0xFF) * 0x101) as u16;
         let b = ((rgb & 0xFF) * 0x101) as u16;
@@ -355,7 +355,7 @@ impl ProcessHandlerContext {
 
 impl ProcessHandler for ProcessHandlerContext {
     fn process(&mut self, _client: &Client, ps: &ProcessScope) -> Control {
-        let mut vu= self.vu.lock().unwrap();
+        let mut vu = self.vu.lock().unwrap();
         self.ports.iter().enumerate().for_each(|(i, chan)| {
             let max_of_chan = chan.as_slice(ps).iter().map(|s| s.abs()).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
             vu[i] = vu[i].max(max_of_chan);
