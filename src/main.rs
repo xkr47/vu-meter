@@ -66,14 +66,14 @@ fn main() {
 
     let colormap = screen.default_colormap();
 
-    let gc_bg         = GcState::new(&*conn, &screen, colormap, 0x000000);
-    let gc_meter_low  = GcState::new(&*conn, &screen, colormap, 0x5DE73D);
-    let gc_meter_med  = GcState::new(&*conn, &screen, colormap, 0xFFFF00);
-    let gc_meter_high = GcState::new(&*conn, &screen, colormap, 0xFF0000);
-    let gc_grid_low   = GcState::new(&*conn, &screen, colormap, 0x062806);
-    let gc_grid_med1  = GcState::new(&*conn, &screen, colormap, 0x282806);
-    let gc_grid_med2  = GcState::new(&*conn, &screen, colormap, 0x472806);
-    let gc_grid_high  = GcState::new(&*conn, &screen, colormap, 0x280F06);
+    let gc_bg         = GcState::new(&conn, &screen, colormap, 0x000000);
+    let gc_meter_low  = GcState::new(&conn, &screen, colormap, 0x5DE73D);
+    let gc_meter_med  = GcState::new(&conn, &screen, colormap, 0xFFFF00);
+    let gc_meter_high = GcState::new(&conn, &screen, colormap, 0xFF0000);
+    let gc_grid_low   = GcState::new(&conn, &screen, colormap, 0x062806);
+    let gc_grid_med1  = GcState::new(&conn, &screen, colormap, 0x282806);
+    let gc_grid_med2  = GcState::new(&conn, &screen, colormap, 0x472806);
+    let gc_grid_high  = GcState::new(&conn, &screen, colormap, 0x280F06);
 
     let mut win_w: u16 = 108;
     let mut win_h: u16 = 204;
@@ -297,6 +297,7 @@ fn create_client() -> Result<Client, Error> {
     Ok(client)
 }
 
+#[allow(clippy::default_constructed_unit_structs)]
 fn setup_ports(client: &Client, num_channels: usize) -> Vec<Port<AudioIn>> {
     (0..num_channels).map(|chan|
         client.register_port(&format!("in_{}", chan + 1), AudioIn::default()).unwrap_or_else(|_| panic!("Failed to register port {}", chan))
